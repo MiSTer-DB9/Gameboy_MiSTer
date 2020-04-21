@@ -1,3 +1,5 @@
+set_global_assignment -name VERILOG_FILE joydb9md.v
+set_global_assignment -name VERILOG_FILE joydb15.v
 set_global_assignment -name QIP_FILE t80/T80.qip
 set_global_assignment -name SYSTEMVERILOG_FILE sdram.sv
 set_global_assignment -name VHDL_FILE spram.vhd
@@ -15,4 +17,3 @@ set_global_assignment -name VERILOG_FILE gb.v
 set_global_assignment -name VERILOG_FILE hdma.v
 set_global_assignment -name SDC_FILE Gameboy.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Gameboy.sv
-set_global_assignment -name VERILOG_FILE joydb9md.v
