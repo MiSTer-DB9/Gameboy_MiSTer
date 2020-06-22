@@ -65,6 +65,7 @@ module emu
 	// b[0]: osd button
 	output  [1:0] BUTTONS,
 
+	input         CLK_AUDIO, // 24.576 MHz
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
 	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
@@ -164,14 +165,14 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXX XXXX XXXX XXXXXX
+// XXXXXXXXXXX XXXX XXXX  XX
 
 `include "build_id.v" 
 localparam CONF_STR = {
 	"GAMEBOY;;",
 	"FS1,GBCGB ,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color;",
-	"OLM,Super Game Boy,On,Palette,Off;",
+	"ONO,Super Game Boy,Off,Palette,On;",
 	"-;",
 	"C,Cheats;",
 	"h0OH,Cheats enabled,Yes,No;",
@@ -192,7 +193,8 @@ localparam CONF_STR = {
 	"O5,Stabilize video(buffer),Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
-   "O2,Boot,Normal,Fast;",
+	"O2,Boot,Normal,Fast;",
+	"O6,Link Port,Disabled,Enabled;",
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start;",
@@ -285,6 +287,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
+	.EXT_BUS(),
 
 	.conf_str(CONF_STR),
 
@@ -646,6 +649,7 @@ gb gb (
 	.serial_data_in(ser_data_in),
 	.serial_clk_out(ser_clk_out),
 	.serial_data_out(ser_data_out),
+	.serial_ena(status[6]),
 	
 	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
 	// so clear the cheats and disable second option (chheats enable/disable)
@@ -707,7 +711,7 @@ wire [15:0] sgb_border_pix;
 wire sgb_lcd_clkena, sgb_lcd_on;
 wire [1:0] sgb_lcd_mode;
 wire sgb_pal_en;
-wire [1:0] sgb_en = status[22:21];
+wire [1:0] sgb_en = {~status[24] ^ status[23], status[23]};
 
 sgb sgb (
 	.reset       ( reset       ),
