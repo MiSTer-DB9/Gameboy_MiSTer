@@ -17,8 +17,13 @@ module sgb (
 	input [8:0]  h_cnt,
 	input [8:0]  v_cnt,
 
-	input [5:0]  joy_di,
-	output [5:0] joy_do,
+	input [7:0]  joystick_0,
+	input [7:0]  joystick_1,
+	input [7:0]  joystick_2,
+	input [7:0]  joystick_3,
+
+	input [1:0]  joy_p54,
+	output [3:0] joy_do,
 
 	output reg [15:0] sgb_border_pix,
 
@@ -46,10 +51,10 @@ localparam CMD_ATTR_TRN = 5'h15;
 localparam CMD_ATTR_SET = 5'h16;
 localparam CMD_MASK_EN  = 5'h17;
 
-assign joy_do = joypad_id_out ? {joy_di[5:4],2'b11,joypad_id} : joy_di;
 
-wire p14 = joy_di[4];
-wire p15 = joy_di[5];
+
+wire p14 = joy_p54[0];
+wire p15 = joy_p54[1];
 
 reg old_p15, old_p14;
 reg [7:0] data;
@@ -122,6 +127,11 @@ always @(posedge clk_sys) begin
 				end
 			end
 
+		end
+
+		// Corrupt packet. p15 and p14 should both go high after one is low.
+		if ( (old_p15 ^ p15) & (old_p15 ^ old_p14) & (p15 ^ p14) ) begin
+			packet_end <= 1'b1;
 		end
 
 		trn_start <= 0;
@@ -330,6 +340,7 @@ end
   2 player: 0F,0E. 4 player: 0F,0E,0D,0C
   Normal Gameboy or Super Gameboy with multiplayer disabled will always return 0F.
 */
+
 reg [1:0] joypad_id;
 reg joypad_id_out;
 reg joylock;
@@ -356,6 +367,19 @@ always @(posedge clk_sys) begin
 	end
 
 end
+
+assign joy_do = joypad_id_out ? {2'b11,joypad_id} : joy_data;
+
+wire [3:0] joy_dir     = ~{ joystick[2], joystick[3], joystick[1], joystick[0] } | {4{p14}};
+wire [3:0] joy_buttons = ~{ joystick[7], joystick[6], joystick[5], joystick[4] } | {4{p15}};
+wire [3:0] joy_data = joy_dir & joy_buttons;
+
+wire [7:0] joystick =
+				(~sgb_en | ~mlt_ctrl[0]) ? (joystick_0 | joystick_1) :
+				(joypad_id == 2'b11) ? joystick_0 :
+				(joypad_id == 2'b10) ? joystick_1 :
+				(joypad_id == 2'b01) ? joystick_2 :
+				                       joystick_3;
 
 wire lcd_off = !lcd_on || (lcd_mode == 2'd01);
 reg old_lcd_off;
@@ -564,7 +588,7 @@ reg [4:0] attr_tile_cnt_x, attr_tile_cnt_y;
 reg [1:0] attr_file_pal_wr;
 reg attr_file_wr;
 
-reg [1:0] attr_chr_pal_cnt;
+reg [8:0] attr_chr_pal_cnt;
 reg [4:0] attr_chr_x;
 reg [8:0] attr_chr_offset;
 
@@ -706,8 +730,8 @@ always @(posedge clk_sys) begin
 		// ATTR_CHR
 		if (attr_chr_set) begin
 			attr_chr_busy <= 1'b1;
-			attr_chr_pal_cnt <= 0;
 			if (attr_chr_start) begin
+				attr_chr_pal_cnt <= 0;
 				attr_chr_x <= attr_chr_data_x;
 				attr_chr_offset <= attr_chr_data_offset;
 			end
@@ -715,7 +739,7 @@ always @(posedge clk_sys) begin
 
 		if (attr_chr_busy) begin
 			attr_chr_pal_cnt <= attr_chr_pal_cnt + 1'b1;
-			if (&attr_chr_pal_cnt || data_set_cnt+attr_chr_pal_cnt == data_set_len) attr_chr_busy <= 0;
+			if (&attr_chr_pal_cnt[1:0] || attr_chr_pal_cnt+1'b1 == attr_chr_len) attr_chr_busy <= 0;
 
 			if (attr_chr_dir) begin
 				attr_chr_offset <= attr_chr_offset + 9'd20;
@@ -736,7 +760,7 @@ always @(posedge clk_sys) begin
 			end
 
 			attr_tile_no_wr <= attr_chr_offset + attr_chr_x;
-			case (attr_chr_pal_cnt)
+			case (attr_chr_pal_cnt[1:0])
 				0: attr_file_pal_wr <= attr_chr_data[7:6];
 				1: attr_file_pal_wr <= attr_chr_data[5:4];
 				2: attr_file_pal_wr <= attr_chr_data[3:2];
