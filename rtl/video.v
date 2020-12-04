@@ -39,6 +39,7 @@ module video (
 	output lcd_on,
 	output lcd_clkena,
 	output [14:0] lcd_data,
+	output lcd_vsync,
 
 	output irq,
 	output vblank_irq,
@@ -71,8 +72,8 @@ sprites sprites (
 	.ce       ( ce           ),
 	.ce_cpu   ( ce_cpu       ),
 	.size16   ( lcdc_spr_siz ),
-	.isGBC_game ( isGBC&&isGBC_game ),
-
+	.isGBC    ( isGBC        ),
+	.sprite_en( lcdc_spr_ena ),
 	.lcd_on   ( lcd_on       ),
 
 	.v_cnt    ( v_cnt        ),
@@ -228,7 +229,8 @@ always @(posedge clk) begin
 	end
 end
 
-wire mode3_end = ~sprite_found & (pcnt == 8'd167);
+wire mode3_end = isGBC ? pcnt_end : (~sprite_found & pcnt_end);
+
 reg mode3_end_l;
 always @(posedge clk) begin
 	if (!lcd_on) begin
@@ -254,7 +256,7 @@ assign vblank_irq = vblank_l;
 // Except on the first line when the LCD is enabled after being disabled
 // where it starts at cycle 0.
 wire oam     = lcd_on & ~end_of_line & ~oam_eval_end;
-wire mode3   = lcd_on & ~mode3_end_l & oam_eval_end;
+wire mode3   = lcd_on & (isGBC ? ~mode3_end : ~mode3_end_l) & oam_eval_end;
 
 assign mode = 
 	vblank_l ? 2'b01 :
@@ -361,6 +363,8 @@ reg skip_en;
 reg [7:0] skip;
 reg [7:0] pcnt;
 
+wire pcnt_end = ( pcnt == (isGBC ? 8'd168 : 8'd167) );
+wire pcnt_reset = end_of_line & ~vblank;
 always @(posedge clk) begin
 	if (!lcd_on) begin
 		skip_en <= 1'b0;
@@ -382,12 +386,12 @@ always @(posedge clk) begin
 
 			// Pixels 0-7 are for fetching partially offscreen sprites and window.
 			// Pixels 8-167 are output to the display.
-			if(~skip_en && pcnt != 8'd167)
+			if(~skip_en & ~pcnt_end)
 				pcnt <= pcnt + 1'd1;
 
 		end
 
-		if (end_of_line & ~vblank) begin
+		if (pcnt_reset) begin
 			pcnt <= 8'd0;
 		end
 	end
@@ -395,37 +399,37 @@ end
 
 reg [8:0] h_cnt;            // max 455
 reg [7:0] v_cnt;            // max 153
-reg [7:0] win_line;
-
-// TODO: Fix window_x = A6. Hblank starts when it should be waiting for the window fetching to end
-wire win_start = lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && (v_cnt >= wy) && (pcnt == wx) && (wx < 8'hA6);
-reg window_ena;
 
 // vcnt_reset goes high a few cycles after v_cnt is incremented to 153.
 // It resets v_cnt back to 0 and keeps it in reset until the following line.
 // This results in v_cnt 0 lasting for almost 2 lines.
 wire line153 = (v_cnt == 8'd153);
 reg vcnt_reset;
+reg vsync;
 always @(posedge clk) begin
 	if (!lcdc_on) begin
 		v_cnt <= 8'd0;
-		win_line <= 8'd0;
 		vcnt_reset <= 1'b0;
+		vsync <= 1'b0;
 	end else if (ce) begin
-		if (~vcnt_reset && h_cnt == 9'd455) begin
+		if (~vcnt_reset && h455) begin
 			v_cnt <= v_cnt + 1'b1;
-			if (window_ena) win_line <= win_line + 1'b1;
 		end
 
 		if (end_of_line && &h_cnt[1:0]) begin
 			vcnt_reset <= line153;
 			if (line153) begin
 				v_cnt <= 8'd0;
-				win_line <= 8'd0;
 			end
 		end
+
+		// VSync goes high on line 0 but it takes a full frame after the LCD is enabled
+		// because the first line where end_of_line is high after LCD is enabled is line 1.
+		if (end_of_line) vsync <= !v_cnt;
 	end
 end
+
+assign lcd_vsync = vsync;
 
 // line inside the background currently being drawn
 wire [7:0] bg_line = v_cnt + scy;
@@ -436,35 +440,51 @@ reg  [4:0] win_col;
 wire [9:0] win_map_addr = {win_line[7:3], win_col[4:0]};
 
 wire [9:0] bg_tile_map_addr = window_ena ? win_map_addr : bg_map_addr;
+
+reg [7:0] win_line;
 wire [2:0] tile_line = window_ena ? win_line[2:0] : bg_line[2:0];
+
+reg window_match, window_ena_d;
+
+wire win_start = mode3 && lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && (v_cnt >= wy) && (pcnt == wx) && (wx < 8'hA7);
+wire window_ena = window_match & ~pcnt_reset & lcdc_win_ena;
 
 always @(posedge clk) begin
 
 	if (!lcdc_on) begin
 		//reset counters
 		h_cnt <= 9'd0;
-		window_ena <= 1'b0;
+		window_match <= 1'b0;
+		window_ena_d <= 1'b0;
+		win_col <= 5'd0;
+		win_line <= 8'd0;
 	end else if (ce) begin
+		h_cnt <= h455 ? 9'd0 : h_cnt + 9'd1;
 
-		if(h_cnt != 455) begin
-			h_cnt <= h_cnt + 9'd1;
-
-			if(win_start) begin
-				win_col <= 5'd0; // window always start with its very left
-				window_ena <= 1'b1;
-			end
-
-			// Increment when fetching is done and not waiting for sprites.
-			if(window_ena && ~sprite_fetch_hold && bg_fetch_done && bg_reload_shift)
-				win_col <= win_col + 1'b1;
-
-		end else begin
-			window_ena <= 1'b0;   // next line starts with background
-
-			// end of line reached
-			h_cnt <= 9'd0;
-
+		if(win_start) begin
+			window_match <= 1'b1;
 		end
+
+		window_ena_d <= window_ena;
+		if (vblank_l)
+			win_line <= 8'd0;
+		else if (window_ena_d & ~window_ena)
+			win_line <= win_line + 1'b1;
+
+		if (window_match & ~mode3_end_l & mode3_end) begin
+			// DMG glitch: If WX = A6 then window_match stays high through VBlank
+			// until WY > v_cnt which means the window always appears on line 0.
+			if (isGBC || wx != 8'hA6 || wy > v_cnt) begin
+				window_match <= 1'b0;   // next line starts with background
+			end
+		end
+
+		// Increment when fetching is done and not waiting for sprites.
+		if(window_ena && ~sprite_fetch_hold && bg_fetch_done && bg_reload_shift)
+			win_col <= win_col + 1'b1;
+
+		if (~lcdc_win_ena | pcnt_reset) win_col <= 5'd0;
+
 	end
 end
 
@@ -622,7 +642,9 @@ always @(posedge clk) begin
 		if (~sprite_fetch_hold || sprite_fetch_done) sprite_fetch_cycle <= 0;
 
 		// Window start, reset fetching
-		if (win_start || !mode3) begin
+		// DMG glitch: fetching is not reset if WX = A6. The following lines all show
+		// the window from the start of the line.
+		if ( (win_start && (isGBC || wx != 8'hA6)) || !mode3) begin
 			bg_fetch_cycle <= 0;
 			bg_shift_cnt <= 0;
 		end
@@ -737,6 +759,9 @@ always @(posedge clk) begin
 		if (lcd_clk) begin
 			lcd_data_out <= (sprite_pixel_visible) ? sprite_pix : pix_rgb_data;
 		end
+
+		// Output blank pixels if lcd is off.
+		if (~lcd_on) lcd_data_out <= isGBC ? 15'h7FFF : 15'd0;
 	end
 end
 

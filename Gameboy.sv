@@ -40,8 +40,8 @@ module emu
 	output        CE_PIXEL,
 
 	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output  [7:0] VIDEO_ARX,
-	output  [7:0] VIDEO_ARY,
+	output [11:0] VIDEO_ARX,
+	output [11:0] VIDEO_ARY,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -51,6 +51,7 @@ module emu
 	output        VGA_DE,    // = ~(VBlank | HBlank)
 	output        VGA_F1,
 	output  [1:0] VGA_SL,
+	output        VGA_SCALER, // Force VGA scaler
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -150,14 +151,12 @@ assign LED_USER  = ioctl_download | sav_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
+assign VGA_SCALER= 0;
 
-assign VIDEO_ARX = status[4:3] == 2'b10 ? 8'd16:
-						 status[4:3] == 2'b01 ? 8'd10:
-						 8'd4;
+wire [1:0] ar = status[4:3];
 						 
-assign VIDEO_ARY = status[4:3] == 2'b10 ? 8'd9:
-						 status[4:3] == 2'b01 ? 8'd9:
-						 8'd3;
+assign VIDEO_ARX = (!ar) ? 12'd10 : (ar - 1'd1);
+assign VIDEO_ARY = (!ar) ? 12'd9  : 12'd0;
 
 assign AUDIO_MIX = status[8:7];
 
@@ -188,7 +187,7 @@ localparam CONF_STR = {
 	"h2RA,Save Backup RAM;",
 	"OD,Autosave,Off,On;",
 	"-;",
-	"O34,Aspect ratio,4:3,10:9,16:9;",
+	"O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O5,Stabilize video(buffer),Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
@@ -596,6 +595,7 @@ wire lcd_clkena;
 wire [14:0] lcd_data;
 wire [1:0] lcd_mode;
 wire lcd_on;
+wire lcd_vsync;
 
 assign AUDIO_S = 0;
 
@@ -644,6 +644,7 @@ gb gb (
 	.lcd_data    ( lcd_data   ),
 	.lcd_mode    ( lcd_mode   ),
 	.lcd_on      ( lcd_on     ),
+	.lcd_vsync   ( lcd_vsync  ),
 	.speed       ( speed      ),
 	
 	// serial port
@@ -674,10 +675,13 @@ lcd lcd
 (
 	// serial interface
 	.clk_sys( clk_sys    ),
-	.pix_wr ( sgb_lcd_clkena & ce_cpu ),
+	.ce     ( ce_cpu         ),
+
+	.lcd_clkena ( sgb_lcd_clkena ),
 	.data   ( sgb_lcd_data   ),
 	.mode   ( sgb_lcd_mode   ),  // used to detect begin of new lines and frames
 	.on     ( sgb_lcd_on     ),
+	.lcd_vs ( sgb_lcd_vsync  ),
 
 	.isGBC  ( isGBC      ),
 
@@ -712,7 +716,7 @@ wire [1:0] joy_p54;
 wire [3:0] joy_do_sgb;
 wire [14:0] sgb_lcd_data;
 wire [15:0] sgb_border_pix;
-wire sgb_lcd_clkena, sgb_lcd_on;
+wire sgb_lcd_clkena, sgb_lcd_on, sgb_lcd_vsync;
 wire [1:0] sgb_lcd_mode;
 wire sgb_pal_en;
 wire [1:0] sgb_en = {~status[24] ^ status[23], status[23]};
@@ -739,6 +743,7 @@ sgb sgb (
 	.lcd_clkena  ( lcd_clkena  ),
 	.lcd_data    ( lcd_data    ),
 	.lcd_mode    ( lcd_mode    ),
+	.lcd_vsync   ( lcd_vsync   ),
 
 	.h_cnt       ( h_cnt      ),
 	.v_cnt       ( v_cnt      ),
@@ -748,7 +753,8 @@ sgb sgb (
 	.sgb_lcd_data    ( sgb_lcd_data    ),
 	.sgb_lcd_on      ( sgb_lcd_on      ),
 	.sgb_lcd_clkena  ( sgb_lcd_clkena  ),
-	.sgb_lcd_mode    ( sgb_lcd_mode    )
+	.sgb_lcd_mode    ( sgb_lcd_mode    ),
+	.sgb_lcd_vsync   ( sgb_lcd_vsync   )
 );
 
 reg hs_o, vs_o;
