@@ -140,7 +140,6 @@ assign       USER_MODE = JOY_FLAG[2:1] ;
 assign       USER_OSD  = joydb_1[10] & joydb_1[6]; // A�adir esto para OSD
 
 
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0; 
 assign VGA_F1 = 0;
 
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -164,11 +163,11 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXX XXXX  XX
+// XXXXXXXXXXXXXXXXXXXXX  XXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
-	"GAMEBOY;;",
+	"GAMEBOY;SS3E000000:100000;",
 	"FS1,GBCGB ,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color;",
 	"ONO,Super Game Boy,Off,Palette,On;",
@@ -190,13 +189,18 @@ localparam CONF_STR = {
 	"O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O5,Stabilize video(buffer),Off,On;",
+	"OG,Frame blend,Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
 	"OB,Boot,Normal,Fast;",
 	"O6,Link Port,Disabled,Enabled;",
 	"-;",
+	"OP,FastForward Sound,On,Off;",
+	"OQ,Pause when OSD is open,Off,On;",
+	"OR,Rewind Capture,Off,On;",
+	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start;",
+	"J1,A,B,Select,Start,FastForward,SaveState,LoadState,Rewind;",
 	"V,v",`BUILD_DATE
 };
 
@@ -336,6 +340,8 @@ wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
 wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc_bank, cart_addr[12:1]};
 wire sdram_oe = ~cart_download & cart_rd & ~cram_rd;
 wire sdram_we = cart_download & dn_write;
+wire sdram_refresh_force;
+wire sdram_autorefresh = !fastforward;
 
 assign SDRAM_CKE = 1;
 
@@ -362,6 +368,8 @@ sdram sdram (
    .ds             ( sdram_ds                  ),
    .we             ( sdram_we                  ),
    .oe             ( sdram_oe                  ),
+   .autorefresh    ( sdram_autorefresh         ),
+   .refresh        ( sdram_refresh_force       ),
    .dout           ( sdram_do                  )
 );
 
@@ -393,49 +401,45 @@ end
 // ----------------------------- MBC1 ----------------------------
 // ---------------------------------------------------------------
 
-wire [9:0] mbc1_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{2'b00, mbc1_rom_bank, cart_addr[13]}: 	// 16k ROM Bank 1-127
-	9'd0;
-	
-wire [9:0] mbc2_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{2'b00, mbc2_rom_bank, cart_addr[13]}:	// 16k ROM Bank 1-15
-	9'd0;
-	
-wire [9:0] mbc3_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{2'b00,mbc3_rom_bank, cart_addr[13]}:  	// 16k ROM Bank 1-127
-	9'd0;
+wire [9:0] mbc1_addr = {2'b00, mbc1_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-127 or MBC1M Bank 0-63
 
-wire [9:0] mbc5_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{mbc5_rom_bank, cart_addr[13]}:       	// 16k ROM Bank 0-480 (0h-1E0h)
-	9'd0;
-	
+wire [9:0] mbc2_addr = {2'b00, mbc2_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-15
+
+wire [9:0] mbc3_addr = {2'b00, mbc3_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-127
+
+wire [9:0] mbc5_addr = {       mbc5_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-480 (0h-1E0h)
+
+// https://forums.nesdev.com/viewtopic.php?p=168940#p168940
+// https://gekkio.fi/files/gb-docs/gbctr.pdf
+// MBC1 $6000 Mode register:
+// 0: Bank2 ANDed with CPU A14. Bank2 affects ROM 0x4000-0x7FFF only
+// 1: Passthrough. Bank2 affects ROM 0x0000-0x3FFF, 0x4000-0x7FFF, RAM 0xA000-0xBFFF
+wire [1:0] mbc1_bank2 = mbc_ram_bank_reg[1:0] & {2{cart_addr[14] | mbc1_mode}};
+
 // -------------------------- RAM banking ------------------------
 
-// in mode 0 (16/8 mode) the ram is not banked 
-// in mode 1 (4/32 mode) four ram banks are used
-wire [1:0] mbc1_ram_bank = (mbc1_mode?mbc_ram_bank_reg[1:0]:2'b00) & ram_mask[1:0];
+wire [1:0] mbc1_ram_bank = mbc1_bank2 & ram_mask[1:0];
 wire [1:0] mbc3_ram_bank = mbc_ram_bank_reg[1:0] & ram_mask[1:0];
 wire [3:0] mbc5_ram_bank = mbc_ram_bank_reg & ram_mask;
 
 // -------------------------- ROM banking ------------------------
    
-// in mode 0 (16/8 mode) the ram bank select signals are the upper rom address lines 
-// in mode 1 (4/32 mode) the upper two rom address lines are 2'b00
-wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc_ram_bank_reg[1:0], mbc_rom_bank_reg[4:0]};
+// 0x0000-0x3FFF = Bank 0
+wire [8:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 9'd0 : mbc_rom_bank_reg;
+
+// MBC1: 4x32 16KByte banks, MBC1M: 4x16 16KByte banks
+wire [6:0] mbc1_rom_bank_mode = mbc1m ? { 1'b0, mbc1_bank2, mbc_rom_bank[3:0] }
+                                      : {       mbc1_bank2, mbc_rom_bank[4:0] };
 
 // in mode 0 map memory at A000-BFFF
 // in mode 1 map rtc register at A000-BFFF
 //wire [6:0] mbc3_ram_bank_addr = { mbc3_mode?2'b00:mbc3_ram_bank_reg, mbc3_rom_bank_reg};
 
 // mask address lines to enable proper mirroring
-wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask[6:0];		 //128
-wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //16
-wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //128
-wire [8:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;  //480
+wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask[6:0];	 //128
+wire [6:0] mbc2_rom_bank = mbc_rom_bank[6:0] & rom_mask[6:0];  //16
+wire [6:0] mbc3_rom_bank = mbc_rom_bank[6:0] & rom_mask[6:0];  //128
+wire [8:0] mbc5_rom_bank = mbc_rom_bank & rom_mask;  //480
 
 wire mbc_battery = (cart_mbc_type == 8'h03) || (cart_mbc_type == 8'h06) || (cart_mbc_type == 8'h09) || (cart_mbc_type == 8'h0D) ||
 	(cart_mbc_type == 8'h10) || (cart_mbc_type == 8'h13) || (cart_mbc_type == 8'h1B) || (cart_mbc_type == 8'h1E) ||
@@ -448,14 +452,25 @@ reg mbc3_mode;
 reg [8:0] mbc_rom_bank_reg;
 reg [3:0] mbc_ram_bank_reg; //0-15
 
+assign SS_Ext_BACK[ 8: 0] = mbc_rom_bank_reg;
+assign SS_Ext_BACK[12: 9] = mbc_ram_bank_reg;
+assign SS_Ext_BACK[   13] = mbc1_mode;
+assign SS_Ext_BACK[   14] = mbc3_mode;
+assign SS_Ext_BACK[   15] = mbc_ram_enable;
 
 always @(posedge clk_sys) begin
-	if(reset) begin
+	if(savestate_load) begin
+		mbc_rom_bank_reg <= SS_Ext[ 8: 0]; //5'd1;
+		mbc_ram_bank_reg <= SS_Ext[12: 9]; //4'd0;
+		mbc1_mode        <= SS_Ext[   13]; //1'b0;
+		mbc3_mode        <= SS_Ext[   14]; //1'b0;
+		mbc_ram_enable   <= SS_Ext[   15]; //1'b0;
+	end else if(reset) begin
 		mbc_rom_bank_reg <= 5'd1;
 		mbc_ram_bank_reg <= 4'd0;
-		mbc1_mode <= 1'b0;
-		mbc3_mode <= 1'b0;
-		mbc_ram_enable <= 1'b0;
+		mbc1_mode        <= 1'b0;
+		mbc3_mode        <= 1'b0;
+		mbc_ram_enable   <= 1'b0;
 	end else if(ce_cpu2x) begin
 		
 		//write to ROM bank register
@@ -506,6 +521,7 @@ reg [7:0] cart_ram_size;
 reg [7:0] cart_cgb_flag;
 reg [7:0] cart_sgb_flag;
 reg [7:0] cart_old_licensee;
+reg [15:0] cart_logo_data[0:7];
 
 // RAM size
 wire [3:0] ram_mask =               	// 0 - no ram
@@ -555,21 +571,39 @@ wire isSGB_game = (cart_sgb_flag == 8'h03 && cart_old_licensee == 8'h33);
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
 
+// MBC1M detect
+reg [7:0] cart_logo_check;
+reg [2:0] cart_logo_idx;
+wire mbc1m = &cart_logo_check;
+
 always @(posedge clk_sys) begin
-	if(!pll_locked) begin
-		cart_mbc_type <= 8'h00;
-		cart_rom_size <= 8'h00;
-		cart_ram_size <= 8'h00;
-	end else begin
-		if(cart_download & ioctl_wr) begin
-			case(ioctl_addr)
-				'h142: cart_cgb_flag <= ioctl_dout[15:8];
-				'h146: {cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
-				'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
-				'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
-			endcase
-		end 
+	if(~old_downloading & downloading) begin
+		cart_logo_idx <= 3'd0;
+		cart_logo_check <= 8'd0;
 	end
+
+	if(cart_download & ioctl_wr) begin
+		case(ioctl_addr)
+			'h142: cart_cgb_flag <= ioctl_dout[15:8];
+			'h146: {cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
+			'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
+			'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
+		endcase
+
+		//Store cart logo data
+		if (ioctl_addr >= 'h104 && ioctl_addr <= 'h112) begin
+			cart_logo_data[cart_logo_idx] <= ioctl_dout;
+			cart_logo_idx <= cart_logo_idx + 1'b1;
+		end
+
+		// MBC1 Multicart detect: Compare 8 words of logo data at second 256KByte bank
+		if (ioctl_addr >= 'h40104 && ioctl_addr <= 'h40112) begin
+			cart_logo_check[cart_logo_idx] <= (ioctl_dout == cart_logo_data[cart_logo_idx]);
+			cart_logo_idx <= cart_logo_idx + 1'b1;
+		end
+
+	end
+
 	if (palette_download & ioctl_wr) begin
 			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
@@ -608,6 +642,9 @@ always @(posedge clk_sys) if(reset) begin
 	else if(cart_download) isGBC <= !filetype[7:4];
 end
 
+wire [15:0] GB_AUDIO_L;
+wire [15:0] GB_AUDIO_R;
+
 // the gameboy itself
 gb gb (
 	.reset	    ( reset      ),
@@ -636,8 +673,8 @@ gb gb (
 	.gbc_bios_do     ( bios_do    ),
 
 	// audio
-	.audio_l 	 ( AUDIO_L	  ),
-	.audio_r 	 ( AUDIO_R	  ),
+	.audio_l 	 ( GB_AUDIO_L ),
+	.audio_r 	 ( GB_AUDIO_R ),
 	
 	// interface to the lcd
 	.lcd_clkena  ( lcd_clkena ),
@@ -653,15 +690,44 @@ gb gb (
 	.serial_data_in(ser_data_in),
 	.serial_clk_out(ser_clk_out),
 	.serial_data_out(ser_data_out),
-	.serial_ena(status[6]),
 	
 	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
 	// so clear the cheats and disable second option (chheats enable/disable)
 	.gg_reset((code_download && ioctl_wr && !ioctl_addr) | cart_download | palette_download),
 	.gg_en(~status[17]),
 	.gg_code(gg_code),
-	.gg_available(gg_available)
+	.gg_available(gg_available),
+	
+	// savestates
+	.save_state      (joystick_0[9]),
+	.load_state      (joystick_0[10]),
+	.sleep_savestate (sleep_savestate),
+	
+	.SaveStateExt_Din (SaveStateBus_Din),
+	.SaveStateExt_Adr (SaveStateBus_Adr), 
+	.SaveStateExt_wren(SaveStateBus_wren),
+	.SaveStateExt_rst (SaveStateBus_rst),
+	.SaveStateExt_Dout(SaveStateBus_Dout),
+	.SaveStateExt_load(savestate_load),
+	
+	.Savestate_CRAMAddr     (Savestate_CRAMAddr),     
+	.Savestate_CRAMRWrEn    (Savestate_CRAMRWrEn),   
+	.Savestate_CRAMWriteData(Savestate_CRAMWriteData),
+	.Savestate_CRAMReadData (Savestate_CRAMReadData),
+	
+	.SAVE_out_Din(ss_din),            // data read from savestate
+	.SAVE_out_Dout(ss_dout),          // data written to savestate
+	.SAVE_out_Adr(ss_addr),           // all addresses are DWORD addresses!
+	.SAVE_out_rnw(ss_rnw),            // read = 1, write = 0
+	.SAVE_out_ena(ss_req),            // one cycle high for each action
+	.SAVE_out_done(ss_ack),            // should be one cycle high when write is done or read value is valid
+	
+	.rewind_on(status[27]),
+	.rewind_active(status[27] & joystick_0[11])
 );
+
+assign AUDIO_L = (joystick_0[8] && status[25]) ? 16'd0 : GB_AUDIO_L;
+assign AUDIO_R = (joystick_0[8] && status[25]) ? 16'd0 : GB_AUDIO_R;
 
 // the lcd to vga converter
 wire [7:0] video_r, video_g, video_b;
@@ -688,6 +754,7 @@ lcd lcd
 	.tint   ( |tint       ),
 	.inv    ( status[12]  ),
 	.double_buffer( status[5]),
+	.frame_blend( status[16] ),
 
 	// Palettes
 	.pal1   (palette[127:104]),
@@ -792,14 +859,66 @@ video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 
 //////////////////////////////// CE ////////////////////////////////////
 
-reg ce_cpu, ce_cpu2x;
-always @(negedge clk_sys) begin
-	reg [2:0] div = 0;
 
-	div      <= div + 1'd1;
-	ce_cpu2x <= !div[1:0];
-	ce_cpu   <= !div[2:0];
+wire ce_cpu, ce_cpu2x;
+wire cart_act = cart_wr | cart_rd;
+
+wire fastforward = joystick_0[8] && !ioctl_download && !OSD_STATUS;
+
+wire sleep_savestate;
+
+reg paused;
+always_ff @(posedge clk_sys) begin
+   paused <= sleep_savestate | (status[26] && OSD_STATUS && !ioctl_download && !reset && ~status[27]); // no pause when downloading rom, resetting or rewind capture is on
 end
+
+speedcontrol speedcontrol
+(
+	.clk_sys     (clk_sys),
+	.speed       (speed),
+	.pause       (paused),
+	.speedup     (fastforward),
+	.cart_act    (cart_act),
+	.ce          (ce_cpu),
+	.ce_2x       (ce_cpu2x),
+	.refresh     (sdram_refresh_force)
+);
+
+///////////////////////////// savestates /////////////////////////////////
+
+wire [63:0] SaveStateBus_Din; 
+wire [9:0]  SaveStateBus_Adr; 
+wire        SaveStateBus_wren;
+wire        SaveStateBus_rst; 
+wire [63:0] SaveStateBus_Dout;
+wire        savestate_load;
+
+wire [19:0] Savestate_CRAMAddr;     
+wire        Savestate_CRAMRWrEn;    
+wire [7:0]  Savestate_CRAMWriteData;
+wire [7:0]  Savestate_CRAMReadData;
+	
+wire [15:0] SS_Ext;
+wire [15:0] SS_Ext_BACK;
+
+eReg_SavestateV #(0, 32, 15, 0, 64'h0000000000000001) iREG_SAVESTATE_Ext (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_Ext_BACK, SS_Ext);  
+
+wire [63:0] ss_dout, ss_din;
+wire [27:2] ss_addr;
+wire        ss_rnw, ss_req, ss_ack;
+
+assign DDRAM_CLK = clk_sys;
+ddram ddram
+(
+	.*,
+
+	.ch1_addr({ss_addr, 1'b0}),
+	.ch1_din(ss_din),
+	.ch1_dout(ss_dout),
+	.ch1_req(ss_req),
+	.ch1_rnw(ss_rnw),
+	.ch1_ready(ss_ack)
+);
 
 ///////////////////////////// GBC BIOS /////////////////////////////////
 
@@ -862,12 +981,13 @@ wire ser_data_in;
 wire ser_data_out;
 wire ser_clk_in;
 wire ser_clk_out;
+wire serial_ena = status[6];
 
-//assign ser_data_in = USER_IN[2];	
-//assign USER_OUT[1] = ser_data_out;
+//assign ser_data_in = serial_ena ? USER_IN[2] : 1'b1;
+//assign USER_OUT[1] = serial_ena ? ser_data_out : 1'b1;
 
-//assign ser_clk_in = USER_IN[0];
-//assign USER_OUT[0] = sc_int_clock_out?ser_clk_out:1'b1;
+//assign ser_clk_in = serial_ena ? USER_IN[0] : 1'b1;
+//assign USER_OUT[0] = (serial_ena & sc_int_clock_out) ? ser_clk_out : 1'b1;
 
 
 
@@ -888,17 +1008,28 @@ wire [7:0] cram_do =
 				cram_q :         // Return normal value
 		8'hFF;                   // Ram not enabled
 
+
+reg read_low = 0;
+always @(posedge clk_sys) begin
+   read_low <= cram_addr[0];
+end
+
+assign Savestate_CRAMReadData = read_low ? cram_q_h : cram_q_l;
+
 wire [7:0] cram_q = cram_addr[0] ? cram_q_h : cram_q_l;
 wire [7:0] cram_q_h;
 wire [7:0] cram_q_l;
 
 wire is_cram_addr = (cart_addr[15:13] == 3'b101);
 wire cram_rd = cart_rd & is_cram_addr;
-wire cram_wr = cart_wr & is_cram_addr;
-wire [16:0] cram_addr = mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
+wire cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr;
+wire [16:0] cram_addr = sleep_savestate ? Savestate_CRAMAddr[16:0]:
+                        mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
 								mbc3? {2'b00,mbc3_ram_bank, cart_addr[12:0]}:
 								mbc5?	{mbc5_ram_bank, cart_addr[12:0]}:
 								{4'd0, cart_addr[12:0]};
+
+wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : cart_di;
 
 // Up to 8kb * 16banks of Cart Ram (128kb)
 
@@ -906,7 +1037,7 @@ dpram #(16) cram_l (
 	.clock_a (clk_sys),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & ~cram_addr[0]),
-	.data_a (cart_di),
+	.data_a (cram_di),
 	.q_a (cram_q_l),
 	
 	.clock_b (clk_sys),
@@ -920,7 +1051,7 @@ dpram #(16) cram_h (
 	.clock_a (clk_sys),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & cram_addr[0]),
-	.data_a (cart_di),
+	.data_a (cram_di),
 	.q_a (cram_q_h),
 	
 	.clock_b (clk_sys),
