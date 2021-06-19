@@ -39,6 +39,7 @@ module video (
 	output lcd_on,
 	output lcd_clkena,
 	output [14:0] lcd_data,
+	output  [1:0] lcd_data_gb,
 	output lcd_vsync,
 
 	output irq,
@@ -238,14 +239,14 @@ wire h_clk_en_neg = (lcd_on && h_div_cnt == 2'd2);
 wire hcnt_end = (h_cnt == 7'd113);
 wire vblank  = (v_cnt >= 144);
 
-reg vblank_l, vblank_t, vblank_ll;
+reg vblank_l, vblank_t;
 reg end_of_line, end_of_line_l;
 reg lyc_match_l, lyc_match_t;
 
 assign SS_Video3_BACK[0] = vblank_l;
 assign SS_Video3_BACK[1] = end_of_line;
 assign SS_Video3_BACK[2] = end_of_line_l;
-assign SS_Video3_BACK[3] = vblank_ll;
+assign SS_Video3_BACK[3] = 0;
 assign SS_Video3_BACK[6] = vblank_t;
 
 always @(posedge clk) begin
@@ -253,17 +254,14 @@ always @(posedge clk) begin
 		vblank_l       <= SS_Video3[0]; //1'b0;
 		end_of_line    <= SS_Video3[1]; //1'b0;
 		end_of_line_l  <= SS_Video3[2]; //1'b0;
-		vblank_ll      <= SS_Video3[3]; //1'b0;
 		vblank_t       <= SS_Video3[6]; //1'b0;
 	end else if (!lcd_on) begin
 		vblank_l       <= 1'b0;
 		end_of_line    <= 1'b0;
 		end_of_line_l  <= 1'b0;
-		vblank_ll      <= 1'b0;
 		vblank_t       <= 1'b0;
 	end else if (ce) begin
 		vblank_l <= vblank_t;
-		vblank_ll <= vblank_l;
 
 		if (h_clk_en_neg & hcnt_end)
 			end_of_line <= 1'b1;
@@ -273,9 +271,6 @@ always @(posedge clk) begin
 			// It also makes the OAM interrupt at line 0 after Vblank a few cycles late.
 			if (h_clk_en) begin
 				vblank_t <= vblank;
-				if (vblank_t & ~vblank & ~isGBC) begin // DMG: vblank falling edge must be 1 cycle faster to pass some tests.
-					vblank_l <= vblank;
-				end
 			end
 			// end_of_line is active for 4 cycles
 			if (h_clk_en_neg) begin
@@ -325,7 +320,7 @@ always @(posedge clk) begin
 end
 
 wire int_lyc = (stat[6] & lyc_match_l);
-wire int_oam = (stat[5] & end_of_line_l & (isGBC ? ~vblank_l : ~vblank_ll) );
+wire int_oam = (stat[5] & end_of_line_l & ~vblank_l);
 wire int_vbl = (stat[4] & vblank_l);
 wire int_hbl = (stat[3] & mode3_end_l & ~vblank_l);
 
@@ -355,8 +350,12 @@ always @(posedge clk) begin
 	end
 end
 
+// DMG: STAT reads mode 0 for 1 Tcycle between Vblank and mode 2
+// but the interrupt signals of Vblank and mode 2 do overlap
+wire mode_vblank = isGBC ? vblank_l : (vblank_l & vblank_t);
+
 assign mode = 
-	vblank_l             ? 2'b01 :
+	mode_vblank          ? 2'b01 :
 	oam_eval_l           ? 2'b10 :
 	mode3_l & ~mode3_end ? 2'b11 :
 	                       2'b00;
@@ -1035,12 +1034,14 @@ wire [14:0] sprite_pix = isGBC ? {obpd[sprite_palette_index+1][6:0],obpd[sprite_
 wire lcd_clk = mode3 && ~skip_en && ~sprite_fetch_hold && ~bg_shift_empty && (pcnt >= 8);
 
 reg [14:0] lcd_data_out;
+reg  [1:0] lcd_data_gb_out;
 reg lcd_clk_out;
 always @(posedge clk) begin
 	if (ce) begin
 		lcd_clk_out <= lcd_clk;
 		if (lcd_clk) begin
 			lcd_data_out <= (sprite_pixel_visible) ? sprite_pix : pix_rgb_data;
+			lcd_data_gb_out <= (sprite_pixel_visible) ? obp_data : bgp_data;
 		end
 
 		// Output blank pixels if lcd is off.
@@ -1049,6 +1050,7 @@ always @(posedge clk) begin
 end
 
 assign lcd_data = lcd_data_out;
+assign lcd_data_gb = lcd_data_gb_out;
 assign lcd_clkena = lcd_clk_out;
 
 endmodule
