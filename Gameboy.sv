@@ -405,7 +405,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_1(joystick_1_USB),
 	.joystick_2(joystick_2),
 	.joystick_3(joystick_3),
-	.joystick_analog_0(joystick_analog_0),
+	.joystick_l_analog_0(joystick_analog_0),
 	.joy_raw(OSD_STATUS? (joydb_1[5:0]|joydb_2[5:0]) : 6'b000000 ), //Menu Dirs, A:Action B:Back (OSD)
 
 	.ps2_key(ps2_key),
@@ -425,6 +425,7 @@ wire [22:0] mbc_addr;
 wire cart_a15;
 wire cart_rd;
 wire cart_wr;
+wire cart_oe;
 wire [7:0] cart_di, cart_do;
 wire nCS; // WRAM or Cart RAM CS
 
@@ -497,6 +498,7 @@ cart_top cart (
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
+	.cart_oe     ( cart_oe    ),
 
 	.nCS         ( nCS        ),
 
@@ -602,12 +604,13 @@ gb gb (
 	.joy_din     ( joy_do_sgb  ),
 
 	// interface to the "external" game cartridge
-	.cart_addr   ( cart_addr  ),
-	.cart_a15    ( cart_a15   ),
+	.ext_bus_addr( cart_addr  ),
+	.ext_bus_a15 ( cart_a15   ),
 	.cart_rd     ( cart_rd    ),
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
+	.cart_oe     ( cart_oe    ),
 
 	.nCS         ( nCS        ),
 
