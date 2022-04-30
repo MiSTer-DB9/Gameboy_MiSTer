@@ -207,13 +207,13 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
 	"GAMEBOY;SS3E000000:40000;",
-	"FS1,GBCGB ,Load ROM;",
-	"OEF,System,Auto,Gameboy,Gameboy Color;",
+	"FS1,GBCGB BIN,Load ROM;",
+	"OEF,System,Auto,Gameboy,Gameboy Color,MegaDuck;",
 	"ONO,Super Game Boy,Off,Palette,On;",
 	"d5FC2,SGB,Load SGB border;",
 	"-;",
@@ -255,6 +255,7 @@ localparam CONF_STR = {
 	"P2-;",
 	"P2OB,Boot,Normal,Fast;",
 	"P2O6,Link Port,Disabled,Enabled;",
+	"P2o6,Rumble,On,Off;",
 	"P2-;",
 	"P2OP,FastForward Sound,On,Off;",
 	"P2OQ,Pause when OSD is open,Off,On;",
@@ -330,6 +331,7 @@ wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
+wire [15:0] joy0_rumble;
 
 wire [32:0] RTC_time;
 
@@ -410,6 +412,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_l_analog_0(joystick_analog_0),
 	.joy_raw(OSD_STATUS? (joydb_1[5:0]|joydb_2[5:0]) : 6'b000000 ), //Menu Dirs, A:Action B:Back (OSD)
 
+	.joystick_0_rumble(joy0_rumble),
+	
 	.ps2_key(ps2_key),
 	
 	.info_req(ss_info_req),
@@ -431,7 +435,8 @@ wire cart_oe;
 wire [7:0] cart_di, cart_do;
 wire nCS; // WRAM or Cart RAM CS
 
-wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
+wire cart_download = ioctl_download && (filetype[5:0] == 6'h01 || filetype == 8'h80);
+wire md_download = cart_download && filetype[7:6] == 2'd2;
 wire palette_download = ioctl_download && (filetype == 3 /*|| !filetype*/);
 wire bios_download = ioctl_download && (filetype == 8'h40);
 wire sgb_border_download = ioctl_download && (filetype == 2);
@@ -485,6 +490,9 @@ wire cart_has_save;
 wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
+wire rumbling;
+
+assign joy0_rumble = {8'd0, ((rumbling & ~status[38]) ? 8'd128 : 8'd0)};
 
 cart_top cart (
 	.reset	     ( reset      ),
@@ -493,6 +501,7 @@ cart_top cart (
 	.ce_cpu      ( ce_cpu     ),
 	.ce_cpu2x    ( ce_cpu2x   ),
 	.speed       ( speed      ),
+	.megaduck    ( megaduck   ),
 
 	.cart_addr   ( cart_addr  ),
 	.cart_a15    ( cart_a15   ),
@@ -554,7 +563,9 @@ cart_top cart (
 	.Savestate_CRAMAddr     ( Savestate_CRAMAddr      ),
 	.Savestate_CRAMRWrEn    ( Savestate_CRAMRWrEn     ),
 	.Savestate_CRAMWriteData( Savestate_CRAMWriteData ),
-	.Savestate_CRAMReadData ( Savestate_CRAMReadData  )
+	.Savestate_CRAMReadData ( Savestate_CRAMReadData  ),
+	
+	.rumbling (rumbling)
 );
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
@@ -581,11 +592,17 @@ assign AUDIO_S = 0;
 
 wire reset = (RESET | status[0] | buttons[1] | cart_download | bk_loading);
 wire speed;
+reg megaduck = 0;
 
 reg isGBC = 0;
 always @(posedge clk_sys) if(reset) begin
-	if(status[15:14]) isGBC <= status[15];
-	else if(cart_download) isGBC <= !filetype[7:4];
+	if (cart_download)
+		megaduck <= (status[15:14] == 3);
+	if (md_download)
+		megaduck <= (status[15:14] == 0) || (status[15:14] == 3);
+
+	if(status[15:14]) isGBC <= (status[15:14] == 2);
+	else if(cart_download) isGBC <= (status[15:14] == 0) && !filetype[7:6];
 end
 
 wire [15:0] GB_AUDIO_L;
@@ -604,6 +621,7 @@ gb gb (
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
 	.isSGB       ( |sgb_en & ~isGBC ),
+	.megaduck    ( megaduck   ),
 
 	.joy_p54     ( joy_p54     ),
 	.joy_din     ( joy_do_sgb  ),
