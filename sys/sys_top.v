@@ -220,8 +220,7 @@ always @(posedge FPGA_CLK2_50) begin
 		if(&deb_user) btn_user <= 1;
 		if(!deb_user) btn_user <= 0;
 
-		//deb_osd <= {deb_osd[6:0], btn_o | ~KEY[0]};
-deb_osd <= {deb_osd[6:0], btn_o | user_osd | ~KEY[0]};
+		deb_osd <= {deb_osd[6:0], btn_o | user_osd | ~KEY[0]};
 		if(&deb_osd) btn_osd <= 1;
 		if(!deb_osd) btn_osd <= 0;
 	end
@@ -237,7 +236,7 @@ wire [31:0] gp_out;
 wire  [1:0] io_ver = 1; // 0 - obsolete. 1 - optimized HPS I/O. 2,3 - reserved for future.
 wire        io_wait;
 wire        io_wide;
-wire [15:0] io_dout;
+wire [15:0] io_dout;                  
 wire [15:0] io_din = gp_outr[15:0];
 wire        io_clk = gp_outr[17];
 wire        io_ss0 = gp_outr[18];
@@ -406,13 +405,13 @@ always@(posedge clk_sys) begin
 				if(cnt<8) begin
 					case(cnt[2:0])
 						0: {HDMI_PR,vrr_mode,WIDTH} <= {io_din[15:14], io_din[11:0]};
-						1: HFP    <= io_din[11:0];
-						2: HS     <= {io_din[15], io_din[11:0]};
-						3: HBP    <= io_din[11:0];
-						4: HEIGHT <= io_din[11:0];
-						5: VFP    <= io_din[11:0];
-						6: VS     <= {io_din[15],io_din[11:0]};
-						7: VBP    <= io_din[11:0];
+						1: HFP        <= io_din[11:0];
+						2: HS         <= {io_din[15], io_din[11:0]};
+						3: HBP        <= io_din[11:0];
+						4: HEIGHT     <= io_din[11:0];
+						5: VFP        <= io_din[11:0];
+						6: VS         <= {io_din[15],io_din[11:0]};
+						7: VBP        <= io_din[11:0];
 					endcase
 `ifndef MISTER_DEBUG_NOHDMI
 					if(cnt == 1) begin
@@ -697,74 +696,73 @@ wire         freeze;
 			.PALETTE2("false"),
 		`endif
 	`endif
-`endif
-`ifdef MISTER_DISABLE_ADAPTIVE
-	.ADAPTIVE("false"),
-`endif
-`ifdef MISTER_DOWNSCALE_NN
-	.DOWNSCALE_NN("true"),
-`endif
-	.FRAC(8),
-	.N_DW(128),
-	.N_AW(28)
-)
-ascal
-(
-	.reset_na (~reset_req),
-	.run      (1),
-	.freeze   (freeze),
+	`ifdef MISTER_DISABLE_ADAPTIVE
+		.ADAPTIVE("false"),
+	`endif
+	`ifdef MISTER_DOWNSCALE_NN
+		.DOWNSCALE_NN("true"),
+	`endif
+		.FRAC(8),
+		.N_DW(128),
+		.N_AW(28)
+	)
+	ascal
+	(
+		.reset_na (~reset_req),
+		.run      (1),
+		.freeze   (freeze),
 
-	.i_clk    (clk_ihdmi),
-	.i_ce     (ce_hpix),
-	.i_r      (hr_out),
-	.i_g      (hg_out),
-	.i_b      (hb_out),
-	.i_hs     (hhs_fix),
-	.i_vs     (hvs_fix),
-	.i_fl     (f1),
-	.i_de     (hde_emu),
-	.iauto    (1),
-	.himin    (0),
-	.himax    (0),
-	.vimin    (0),
-	.vimax    (0),
+		.i_clk    (clk_ihdmi),
+		.i_ce     (ce_hpix),
+		.i_r      (hr_out),
+		.i_g      (hg_out),
+		.i_b      (hb_out),
+		.i_hs     (hhs_fix),
+		.i_vs     (hvs_fix),
+		.i_fl     (f1),
+		.i_de     (hde_emu),
+		.iauto    (1),
+		.himin    (0),
+		.himax    (0),
+		.vimin    (0),
+		.vimax    (0),
 
-	.o_clk    (clk_hdmi),
-	.o_ce     (scaler_out),
-	.o_r      (hdmi_data[23:16]),
-	.o_g      (hdmi_data[15:8]),
-	.o_b      (hdmi_data[7:0]),
-	.o_hs     (hdmi_hs),
-	.o_vs     (hdmi_vs),
-	.o_de     (hdmi_de),
-	.o_vbl    (hdmi_vbl),
-	.o_brd    (hdmi_brd),
-	.o_lltune (lltune),
-	.htotal   (WIDTH + HFP + HBP + HS[11:0]),
-	.hsstart  (WIDTH + HFP),
-	.hsend    (WIDTH + HFP + HS[11:0]),
-	.hdisp    (WIDTH),
-	.hmin     (hmin),
-	.hmax     (hmax),
-	.vtotal   (HEIGHT + VFP + VBP + VS[11:0]),
-	.vsstart  (HEIGHT + VFP),
-	.vsend    (HEIGHT + VFP + VS[11:0]),
-	.vdisp    (HEIGHT),
-	.vmin     (vmin),
-	.vmax     (vmax),
-	.vrr      (vrr_mode),
-	.vrrmax   (HEIGHT + VBP + VS[11:0] + 12'd1),
+		.o_clk    (clk_hdmi),
+		.o_ce     (scaler_out),
+		.o_r      (hdmi_data[23:16]),
+		.o_g      (hdmi_data[15:8]),
+		.o_b      (hdmi_data[7:0]),
+		.o_hs     (hdmi_hs),
+		.o_vs     (hdmi_vs),
+		.o_de     (hdmi_de),
+		.o_vbl    (hdmi_vbl),
+		.o_brd    (hdmi_brd),
+		.o_lltune (lltune),
+		.htotal   (WIDTH + HFP + HBP + HS[11:0]),
+		.hsstart  (WIDTH + HFP),
+		.hsend    (WIDTH + HFP + HS[11:0]),
+		.hdisp    (WIDTH),
+		.hmin     (hmin),
+		.hmax     (hmax),
+		.vtotal   (HEIGHT + VFP + VBP + VS[11:0]),
+		.vsstart  (HEIGHT + VFP),
+		.vsend    (HEIGHT + VFP + VS[11:0]),
+		.vdisp    (HEIGHT),
+		.vmin     (vmin),
+		.vmax     (vmax),
+		.vrr      (vrr_mode),
+		.vrrmax   (HEIGHT + VBP + VS[11:0] + 12'd1),
 
-	.mode     ({~lowlat,LFB_EN ? LFB_FLT : |scaler_flt,2'b00}),
-	.poly_clk (clk_sys),
-	.poly_a   (coef_addr),
-	.poly_dw  (coef_data),
-	.poly_wr  (coef_wr),
+		.mode     ({~lowlat,LFB_EN ? LFB_FLT : |scaler_flt,2'b00}),
+		.poly_clk (clk_sys),
+		.poly_a   (coef_addr),
+		.poly_dw  (coef_data),
+		.poly_wr  (coef_wr),
 
-	.pal1_clk (clk_pal),
-	.pal1_dw  (pal_d),
-	.pal1_a   (pal_a),
-	.pal1_wr  (pal_wr),
+		.pal1_clk (clk_pal),
+		.pal1_dw  (pal_d),
+		.pal1_a   (pal_a),
+		.pal1_wr  (pal_wr),
 
 	`ifdef MISTER_FB
 		`ifdef MISTER_FB_PALETTE
@@ -875,27 +873,27 @@ always @(posedge clk_vid) begin
 
 	hdmi_height <= (VSET && (VSET < HEIGHT)) ? VSET : HEIGHT;
 	hdmi_width  <= (HSET && (HSET < WIDTH))  ? HSET << HDMI_PR : WIDTH << HDMI_PR;
-
+	
 	if(!ARY) begin
 		if(ARX == 1) begin
-			arx  <= arc1x[11:0];
-			ary  <= arc1y[11:0];
+			arx <= arc1x[11:0];
+			ary <= arc1y[11:0];
 			arxy <= arc1x[12] | arc1y[12];
 		end
 		else if(ARX == 2) begin
-			arx  <= arc2x[11:0];
-			ary  <= arc2y[11:0];
+			arx <= arc2x[11:0];
+			ary <= arc2y[11:0];
 			arxy <= arc2x[12] | arc2y[12];
 		end
 		else begin
-			arx  <= 0;
-			ary  <= 0;
+			arx <= 0;
+			ary <= 0;
 			arxy <= 0;
 		end
 	end
 	else begin
-		arx  <= ARX[11:0];
-		ary  <= ARY[11:0];
+		arx <= ARX[11:0];
+		ary <= ARY[11:0];
 		arxy <= ARX[12] | ARY[12];
 	end
 
@@ -1017,14 +1015,14 @@ end
 `endif
 
 //1920x1080@60 PCLK=148.5MHz CEA
-reg  [11:0] WIDTH   = 1920;
-reg  [11:0] HFP     = 88;
-reg  [12:0] HS      = 48;
-reg  [11:0] HBP     = 148;
-reg  [11:0] HEIGHT  = 1080;
-reg  [11:0] VFP     = 4;
-reg  [12:0] VS      = 5;
-reg  [11:0] VBP     = 36;
+reg  [11:0] WIDTH  = 1920;
+reg  [11:0] HFP    = 88;
+reg  [12:0] HS     = 48;
+reg  [11:0] HBP    = 148;
+reg  [11:0] HEIGHT = 1080;
+reg  [11:0] VFP    = 4;
+reg  [12:0] VS     = 5;
+reg  [11:0] VBP    = 36;
 reg         HDMI_PR = 0;
 
 wire [63:0] reconfig_to_pll;
@@ -1644,16 +1642,16 @@ wire        hvs_fix, hhs_fix, hde_emu;
 wire        clk_vid, ce_pix, clk_ihdmi, ce_hpix;
 wire        vga_force_scaler;
 
-	wire        ram_clk;
-	wire [28:0] ram_address;
-	wire [7:0]  ram_burstcount;
-	wire        ram_waitrequest;
-	wire [63:0] ram_readdata;
-	wire        ram_readdatavalid;
-	wire        ram_read;
-	wire [63:0] ram_writedata;
-	wire [7:0]  ram_byteenable;
-	wire        ram_write;
+wire        ram_clk;
+wire [28:0] ram_address;
+wire [7:0]  ram_burstcount;
+wire        ram_waitrequest;
+wire [63:0] ram_readdata;
+wire        ram_readdatavalid;
+wire        ram_read;
+wire [63:0] ram_writedata;
+wire [7:0]  ram_byteenable;
+wire        ram_write;
 
 wire        led_user;
 wire  [1:0] led_power;
@@ -1663,6 +1661,9 @@ wire  [1:0] btn;
 sync_fix sync_v(clk_vid, vs_emu, vs_fix);
 sync_fix sync_h(clk_vid, hs_emu, hs_fix);
 
+wire  [7:0] user_out, user_in;
+wire  [1:0] user_mode;
+wire        user_osd;
 
 assign clk_ihdmi= clk_vid;
 assign ce_hpix  = vga_ce_sl;
@@ -1673,18 +1674,14 @@ assign hhs_fix  = vga_hs_sl;
 assign hvs_fix  = vga_vs_sl;
 assign hde_emu  = vga_de_sl;
 
-	wire uart_dtr;
-	wire uart_dsr;
-	wire uart_cts;
-	wire uart_rts;
-	wire uart_rxd;
-	wire uart_txd;
+wire uart_dtr;
+wire uart_dsr;
+wire uart_cts;
+wire uart_rts;
+wire uart_rxd;
+wire uart_txd;
 
-	wire osd_status;
-
-wire  [7:0] user_out, user_in;
-wire  [1:0] user_mode;
-wire        user_osd;
+wire osd_status;
 
 wire        fb_en;
 wire  [4:0] fb_fmt;
@@ -1696,13 +1693,13 @@ wire [13:0] fb_stride;
 
 `ifdef MISTER_FB
 	`ifdef MISTER_FB_PALETTE
-	wire        fb_pal_clk;
-	wire  [7:0] fb_pal_a;
-	wire [23:0] fb_pal_d;
-	wire [23:0] fb_pal_q;
-	wire        fb_pal_wr;
+		wire        fb_pal_clk;
+		wire  [7:0] fb_pal_a;
+		wire [23:0] fb_pal_d;
+		wire [23:0] fb_pal_q;
+		wire        fb_pal_wr;
 	`endif
-	wire        fb_force_blank;
+	wire   fb_force_blank;
 `else
 	assign fb_en = 0;
 	assign fb_fmt = 0;
@@ -1833,8 +1830,8 @@ emu emu
 	.UART_DSR(uart_dtr),
 
 	.USER_OSD(user_osd),
-.USER_MODE(user_mode),
-.USER_OUT(user_out),
+	.USER_MODE(user_mode),
+	.USER_OUT(user_out),
 	.USER_IN(user_in)
 );
 
