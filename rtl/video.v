@@ -370,7 +370,7 @@ assign mode =
 	mode3_l & ~mode3_end ? 2'b11 :
 	                       2'b00;
 
-assign oam_cpu_allow = ~(oam_eval | mode3);
+assign oam_cpu_allow = ~(oam_eval | mode3 | dma_active);
 assign vram_cpu_allow = ~mode3;
 
 // --------------------------------------------------------------------
@@ -1004,6 +1004,7 @@ sprites sprites (
 	.sprite_addr ( sprite_addr                 ),
 	.sprite_attr ( sprite_attr ),
 	.sprite_index ( sprite_index ),
+	.sprite_fetch_c1   ( sprite_fetch_cycle == 3'd1 ),
 	.sprite_fetch_done ( sprite_fetch_done) ,
 
 	.dma_active ( dma_active),
