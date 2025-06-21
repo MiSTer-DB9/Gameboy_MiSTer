@@ -195,6 +195,8 @@ assign BUTTONS   = 0;
 assign HDMI_FREEZE = 0;
 assign VGA_SCALER= 0;
 assign VGA_DISABLE = 0;
+assign HDMI_BLACKOUT = 0;
+assign HDMI_BOB_DEINT = 0;
 
 assign AUDIO_MIX = status[8:7];
 
