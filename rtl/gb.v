@@ -24,12 +24,14 @@ module gb (
    
 	input clk_sys,
 	input ce,
+	input ce_n,
 	input ce_2x,
 
 	input [7:0] joystick,
 	input isGBC,
     input real_cgb_boot,
 	input isSGB,
+	input extra_spr_en,
 
 	// cartridge interface
 	// can adress up to 1MB ROM
@@ -683,6 +685,7 @@ video video (
 	.reset       ( reset_ss         ),
 	.clk         ( clk_sys       ),
 	.ce          ( ce            ),   // 4Mhz
+	.ce_n        ( ce_n          ),
 	.ce_cpu      ( ce_cpu        ),   //can be 2x in cgb double speed mode
 	.isGBC       ( isGBC         ),
 	.isGBC_mode  ( isGBC_mode    ),  //enable GBC mode during bootstrap rom
@@ -720,6 +723,9 @@ video video (
 	.dma_rd      ( dma_rd        ),
 	.dma_addr    ( dma_addr      ),
 	.dma_data    ( dma_data      ),
+
+	.extra_spr_en( extra_spr_en  ),
+	.extra_wait  ( (isGBC & hdma_rd) | dma_rd | sel_vram ),
    
    .Savestate_OAMRAMAddr      (Savestate_RAMAddr[7:0]),
    .Savestate_OAMRAMRWrEn     (Savestate_RAMRWrEn[2]),

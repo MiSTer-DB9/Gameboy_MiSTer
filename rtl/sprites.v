@@ -53,6 +53,21 @@ module sprites (
 	input [7:0] oam_addr_in,
 	input [7:0] oam_di,
 	output [7:0] oam_do,
+
+	input extra_spr_en,
+	input extra_wait,
+
+	output extra_tile_fetch,
+	output [11:0] extra_tile_addr,
+	input [7:0] tile_data_in,
+
+	output spr_extra_found,
+	output [7:0] spr_extra_tile0,
+	output [7:0] spr_extra_tile1,
+	output [2:0] spr_extra_cgb_pal,
+	output [3:0] spr_extra_index,
+	output spr_extra_pal,
+	output spr_extra_prio,
    
    // savestates
    input [7:0] Savestate_OAMRAMAddr,     
@@ -71,7 +86,12 @@ assign oam_eval = lcd_on & ~oam_eval_end & oam_eval_en & ~oam_eval_reset;
 
 wire [3:0] fetch_row;
 
+wire oam_eval_extra;
+wire [7:1] oam_extra_addr;
+wire [7:0] spr_extra_fetch_attr;
+
 wire [7:1] oam_addr = dma_active ? oam_addr_in[7:1] :
+						oam_eval_extra ? { oam_extra_addr } :
 						oam_eval ? { oam_eval_addr, 1'b0 } :
 						oam_fetch ? { oam_fetch_addr, 1'b1 } :
 						oam_addr_in[7:1];
@@ -222,12 +242,56 @@ wire [3:0] active_sprite =
 		sprite_x_matches[8] ? 4'd8 :
 							  4'd9;
 assign sprite_index = active_sprite;
-assign sprite_attr = sprite_x_attr;
+assign sprite_attr = oam_eval_extra ? spr_extra_fetch_attr : sprite_x_attr;
 
 assign oam_fetch_addr = sprite_no[active_sprite];
 
 assign fetch_row = sprite_attr[6] ? ~sprite_y[active_sprite] : sprite_y[active_sprite];
 
 assign sprite_addr = size16 ? {tile_index_y[7:1],fetch_row} : {tile_index_y,fetch_row[2:0]};
+
+// Extra sprites:
+// Sprite tile fetching during mode3 reduces the length of HBlank.
+// Simply adding more sprites will shorten HBlank even more which breaks timing.
+// Instead, this module will try to fetch tile data for extra sprites during mode2 if VRAM is idle.
+sprites_extra sprites_extra (
+	.clk            ( clk ),
+	.ce             ( ce  ),
+
+	.extra_spr_en   ( extra_spr_en ),
+
+	.v_cnt          ( v_cnt ),
+	.h_cnt          ( h_cnt ),
+
+	.oam_eval_clk   ( oam_eval_clk ),
+	.oam_eval_reset ( oam_eval_reset | ~lcd_on),
+	.oam_eval_end   ( oam_eval_end ),
+
+	.size16         ( size16 ),
+
+	.oam_index      ( spr_index ),
+	.sprite_cnt     ( sprite_cnt ),
+
+	.oam_l_q        ( oam_l_q ),
+	.oam_h_q        ( oam_h_q ),
+
+	.extra_wait     ( extra_wait ),
+	.oam_eval_extra ( oam_eval_extra ),
+	.oam_extra_addr ( oam_extra_addr ) ,
+
+	.spr_fetch_attr ( spr_extra_fetch_attr ),
+
+	.tile_fetch     ( extra_tile_fetch ),
+	.tile_data_in   ( tile_data_in ),
+	.tile_addr      ( extra_tile_addr ),
+
+	.spr_found      ( spr_extra_found ),
+	.spr_tile0      ( spr_extra_tile0 ),
+	.spr_tile1      ( spr_extra_tile1 ),
+	.spr_pal        ( spr_extra_pal ),
+	.spr_prio       ( spr_extra_prio ),
+	.spr_cgb_pal    ( spr_extra_cgb_pal ),
+	.spr_index      ( spr_extra_index )
+);
 
 endmodule
