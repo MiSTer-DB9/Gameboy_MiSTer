@@ -195,6 +195,8 @@ assign BUTTONS   = 0;
 assign HDMI_FREEZE = 0;
 assign VGA_SCALER= 0;
 assign VGA_DISABLE = 0;
+assign HDMI_BLACKOUT = 0;
+assign HDMI_BOB_DEINT = 0;
 
 assign AUDIO_MIX = status[8:7];
 
@@ -210,7 +212,7 @@ assign DDRAM_WE       = 0;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXX      X       XXXXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXX      X       XXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -228,16 +230,17 @@ localparam CONF_STR = {
 
 	"P1,Audio & Video;",
 	"P1-;",
+	"P1O[44],Extra sprites,No,Yes;",
 	"P1ON,Seperator Line,Off,On;",
 	"P1OC,Inverted color,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
+	"d4P1OU,GBC Colors,Corrected,Raw;",
+	"P1O5,Sync Video,Off,On;",
 	"P1-;",
 	"P1O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1OLM,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"d4P1OU,GBC Colors,Corrected,Raw;",
-	"P1O5,Sync Video,Off,On;",
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
 	"P1O[43],Audio mode,Accurate,No Pops;",
@@ -637,12 +640,14 @@ gb gb1 (
 	
 	.clk_sys     ( clk_sys    ),
 	.ce          ( ce1_cpu    ),   // the whole gameboy runs on 4mhnz
+	.ce_n        ( ce1_cpu_n   ),  // 4MHz falling edge clock enable
 	.ce_2x       ( ce1_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 	
 	.isGBC       ( isGBC      ),
 	.real_cgb_boot ( using_real_cgb_bios ),
 	.isSGB       ( 1'b0 ),
 	.megaduck    ( megaduck   ),
+	.extra_spr_en( status[44] ),
 
 	.joy_p54     ( joy1_p54     ),
 	.joy_din     ( joy1_do      ),
@@ -826,6 +831,7 @@ gb gb2 (
 	
 	.clk_sys     ( clk_sys    ),
 	.ce          ( ce2_cpu    ),   // the whole gameboy runs on 4mhnz
+	.ce_n        ( ce2_cpu_n   ),  // 4MHz falling edge clock enable
 	.ce_2x       ( ce2_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 	
 
@@ -833,6 +839,7 @@ gb gb2 (
 	.real_cgb_boot ( using_real_cgb_bios ),
 	.isSGB       ( 1'b0 ),
 	.megaduck    ( megaduck   ),
+	.extra_spr_en( status[44] ),
 
 	.joy_p54     ( joy2_p54     ),
 	.joy_din     ( joy2_do      ),
@@ -1050,8 +1057,8 @@ video_freak video_freak
 //////////////////////////////// CE ////////////////////////////////////
 
 
-wire ce1_cpu, ce1_cpu2x;
-wire ce2_cpu, ce2_cpu2x;
+wire ce1_cpu, ce1_cpu_n, ce1_cpu2x;
+wire ce2_cpu, ce2_cpu_n, ce2_cpu2x;
 wire ce_ram2x;
 
 speedcontrol speedcontrol1
@@ -1062,6 +1069,7 @@ speedcontrol speedcontrol1
 	.romack      (sdram_ack),
 	.pausevideo  (pauseVideoCore1 & status[5]),
 	.ce          (ce1_cpu),
+	.ce_n        (ce1_cpu_n),
 	.ce_2x       (ce1_cpu2x)
 );
 
@@ -1073,6 +1081,7 @@ speedcontrol speedcontrol2
 	.romack      (sdram_ack2),
 	.pausevideo  (pauseVideoCore2 & status[5]),
 	.ce          (ce2_cpu),
+	.ce_n        (ce2_cpu_n),
 	.ce_2x       (ce2_cpu2x)
 );
 

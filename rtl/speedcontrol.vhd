@@ -11,6 +11,7 @@ entity speedcontrol is
       romack      : in  std_logic;
       pausevideo  : in  std_logic;
       ce          : out std_logic := '0';
+      ce_n        : out std_logic := '0';
       ce_2x       : out std_logic := '0'    
    );
 end entity;
@@ -34,6 +35,7 @@ begin
       if falling_edge(clk_sys) then
       
          ce    <= '0';
+         ce_n  <= '0';
          ce_2x <= '0';         
          
          skipclock := '0';
@@ -41,6 +43,9 @@ begin
          clkdiv <= clkdiv + 1;
          if (clkdiv = "000") then
             ce <= '1';
+         end if;
+         if (clkdiv = "100") then
+            ce_n <= '1';
          end if;
          if (clkdiv(1 downto 0) = "00") then
             ce_2x    <= '1';
@@ -76,6 +81,7 @@ begin
          
          if (skipclock = '1') then
             ce         <= '0';
+            ce_n       <= '0';
             ce_2x      <= '0';
             if (clkdiv = "100") then
                clkdiv <= "001";
