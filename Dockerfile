@@ -3,4 +3,4 @@ LABEL maintainer="theypsilon@gmail.com"
 WORKDIR /project
 ADD . /project
 RUN /opt/intelFPGA_lite/quartus/bin/quartus_sh --flow compile Gameboy.qpf
-CMD cat /project/output_files/Gameboy.rbf
+CMD ["cat", "/project/output_files/Gameboy.rbf"]
