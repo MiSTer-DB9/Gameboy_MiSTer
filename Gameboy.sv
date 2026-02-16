@@ -239,6 +239,7 @@ localparam CONF_STR = {
 	"-;",
 	"oUV,UserIO Joystick,Off,DB9MD,DB15 ;",
 	"oT,UserIO Players, 1 Player,2 Players;",
+	"oS,Buttons Mapping,Name,Positional;",
 	"-;",
 	"h2R9,Reload Backup RAM;",
 	"h2RA,Save Backup RAM;",
@@ -337,9 +338,28 @@ wire        sys_megaduck = (status[15:14] == 3);
 wire        dupe_save_gb2 = status[11];
 wire        rom_load_gb2  = status[6];
 
-//SM BAUDLR
-wire [31:0] joystick_0 = joydb_1ena ? (OSD_STATUS? 32'b000000 : {joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[5:0]}) : joystick_0_USB;
-wire [31:0] joystick_1 = joydb_2ena ? (OSD_STATUS? 32'b000000 : {joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[5:0]}) : joydb_1ena ? joystick_0_USB : joystick_1_USB;
+wire [31:0] joystick_0 = joydb_1ena ?
+	!status[60] ? {
+		//SM BAUDLR
+		OSD_STATUS? 32'b000000 : {joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[5:0]}
+	} :
+	{
+		//SM ABUDLR
+		OSD_STATUS? 32'b000000 : {joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[4], joydb_1[5], joydb_1[3:0]}
+	}
+: joystick_0_USB;
+
+wire [31:0] joystick_1 = joydb_2ena ?
+	!status[60] ? {
+		//SM BAUDLR
+		OSD_STATUS? 32'b000000 : {joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[5:0]}
+	} :
+	{
+		//SM ABUDLR
+		OSD_STATUS? 32'b000000 : {joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[4], joydb_2[5], joydb_2[3:0]}
+	}
+: joydb_1ena ? joystick_0_USB : joystick_1_USB;
+
 wire [31:0] joystick_2 = joydb_2ena ? joystick_1_USB : joydb_1ena ? joystick_1_USB : joystick_2_USB;
 wire [31:0] joystick_3 = joydb_2ena ? joystick_2_USB : joydb_1ena ? joystick_2_USB : joystick_3_USB;
 
