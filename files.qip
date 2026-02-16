@@ -41,3 +41,5 @@ set_global_assignment -name VERILOG_FILE rtl/mappers/megaduck.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/misc.v
 set_global_assignment -name SDC_FILE Gameboy.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Gameboy.sv
+set_global_assignment -name VERILOG_FILE rtl/joydb9md.v
+set_global_assignment -name VERILOG_FILE rtl/joydb15.v
