@@ -4,10 +4,10 @@
 set -euo pipefail
 
 UPSTREAM_REPO="https://github.com/MiSTer-devel/Gameboy_MiSTer.git"
-CORE_NAME=(Gameboy2P Gameboy)
+CORE_NAME=(Gameboy2P)
 MAIN_BRANCH="Gameboy2P"
-COMPILATION_INPUT=(Gameboy.qpf Gameboy.qpf)
-COMPILATION_OUTPUT=(output_files/Gameboy.rbf output_files/Gameboy.rbf)
+COMPILATION_INPUT=(Gameboy.qpf)
+COMPILATION_OUTPUT=(output_files/Gameboy.rbf)
 QUARTUS_IMAGE="theypsilon/quartus-lite-c5:17.0.2.docker0"
 
 echo "Fetching upstream:"
