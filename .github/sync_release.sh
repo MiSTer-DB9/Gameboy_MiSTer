@@ -12,7 +12,7 @@ CORE_NAME=(Gameboy2P)
 MAIN_BRANCH="Gameboy2P"
 COMPILATION_INPUT=(Gameboy.qpf)
 COMPILATION_OUTPUT=(output_files/Gameboy.rbf)
-QUARTUS_IMAGE="theypsilon/quartus-lite-c5:17.0.2.docker0"
+QUARTUS_IMAGE="${QUARTUS_IMAGE:?QUARTUS_IMAGE env not set — populated by workflow Resolve-Quartus-image step}"
 
 # [MiSTer-DB9 BEGIN] - fork-only cores have no upstream; sync_release is a no-op
 if [[ -z "${UPSTREAM_REPO}" ]]; then
