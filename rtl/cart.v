@@ -6,6 +6,7 @@ module cart_top (
 	input         ce_cpu2x,
 	input         speed,
 	input         megaduck,
+	input         duck_md0_mode,
 	input   [2:0] mapper_sel,
 
 	input  [14:0] cart_addr,
@@ -23,14 +24,18 @@ module cart_top (
 	output reg    dn_write,
 	output        cart_ready,
 
+	output        is_cram_addr,
 	output        cram_rd,
 	output        cram_wr,
+	output        cram_bram_wr,
+	output [16:0] cram_addr,
 
 	input         cart_download,
 
 	output  [7:0] ram_mask_file,
 	output  [7:0] ram_size,
 	output        has_save,
+	output        bram_save,
 
 	output        isGBC_game,
 	output        isSGB_game,
@@ -64,12 +69,12 @@ module cart_top (
 	input         SaveStateExt_rst,
 	output [63:0] SaveStateExt_Dout,
 	input         savestate_load,
-	input         sleep_savestate,
+	input         savestate_ovr,
 
 	input  [19:0] Savestate_CRAMAddr,
 	input         Savestate_CRAMRWrEn,
-	input   [7:0] Savestate_CRAMWriteData,
-	output  [7:0] Savestate_CRAMReadData,
+	input  [15:0] Savestate_CRAMWriteData,
+	output [15:0] Savestate_CRAM_Q,
 	output        rumbling
 );
 ///////////////////////////////////////////////////
@@ -97,7 +102,7 @@ eReg_SavestateV #(0, 37, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_Ext2 (clk_s
 assign SaveStateExt_Dout = SaveStateBus_Dout_or[0] | SaveStateBus_Dout_or[1];
 
 wire [7:0] rom_do;
-wire [7:0] cram_do;
+wire [7:0] mbc_cram_do;
 wire [16:0] mbc_cram_addr;
 wire mbc_ram_enable, mbc_battery;
 wire mbc_cram_wr;
@@ -129,6 +134,7 @@ mappers mappers (
 	.mani161 ( mani161 ),
 
 	.megaduck ( megaduck_en ),
+	.duck_md0_mode ( duck_md0_mode ),
 
 	.isGBC_game ( isGBC_game ),
 
@@ -152,7 +158,7 @@ mappers mappers (
 	.savestate_data2  ( SS_Ext2        ),
 	.savestate_back2  ( SS_Ext2_BACK   ),
 
-	.has_ram  ( |cart_ram_size ),
+	.has_ram  ( |ram_size ),
 	.ram_mask ( ram_mask ),
 	.rom_mask ( rom_mask ),
 
@@ -172,8 +178,8 @@ mappers mappers (
 	.nCS       ( nCS     ),
 
 	.cram_rd   ( cram_rd  ),
-	.cram_di   ( cram_q  ),
-	.cram_do   ( cram_do  ),
+	.cram_di   ( bram_save ? cram_q : rom_di ),
+	.cram_do   ( mbc_cram_do  ),
 	.cram_addr ( mbc_cram_addr ),
 
 	.cram_wr_do ( mbc_cram_wr_do ),
@@ -198,10 +204,10 @@ reg [15:0] cart_logo_data[0:7];
 
 // RAM size
 wire [3:0] ram_mask =                  // 0 - no ram
-	   (cart_ram_size == 1)?4'b0000:   // 1 - 2k, 1 bank
-	   (cart_ram_size == 2)?4'b0000:   // 2 - 8k, 1 bank
-	   (cart_ram_size == 3)?4'b0011:   // 3 - 32k, 4 banks
-	   (cart_ram_size == 5)?4'b0111:   // 5 - 64k, 8 banks
+	   (ram_size == 1)?4'b0000:   // 1 - 2k, 1 bank
+	   (ram_size == 2)?4'b0000:   // 2 - 8k, 1 bank
+	   (ram_size == 3)?4'b0011:   // 3 - 32k, 4 banks
+	   (ram_size == 5)?4'b0111:   // 5 - 64k, 8 banks
 	   4'b1111;                        // 4 - 128k 16 banks
 
 // ROM size
@@ -228,13 +234,18 @@ wire mbc1 = (mapper_sel_r == 3'd3) || (cart_mbc_type == 1) || (cart_mbc_type == 
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 //wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
 wire mbc3 = (mapper_sel_r == 3'd4) || (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
-wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (cart_ram_size == 5) );
+wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (ram_size == 5) );
 //wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
 wire mbc6 = (cart_mbc_type == 32);
 wire mbc7 = (cart_mbc_type == 34);
 wire rocket = (cart_mbc_type == 151) || (cart_mbc_type == 153);
-wire megaduck_en = (cart_mbc_type == 250); // Use a wire to ensure enable is load while loading
+wire megaduck_en = (cart_mbc_type == 250); // Use a wire to ensure enable is low while loading
+wire duck_md0_cart = megaduck_en && duck_md0_mode;
+
+// MD0 system ROM/laptop carts expose the 32KB external memory cart.
+assign ram_size = duck_md0_cart ? 8'd3 : cart_ram_size;
+
 wire gb_camera = (cart_mbc_type == 252);
 wire tama = (cart_mbc_type == 253);
 
@@ -362,8 +373,6 @@ always @(posedge clk_sys) begin
 	end
 end
 
-assign ram_size = cart_ram_size;
-
 reg cart_ready_r = 0;
 reg ioctl_wait_r;
 always @(posedge clk_sys) begin
@@ -383,69 +392,66 @@ reg [7:0] cart_do_r;
 always @* begin
 	if (~cart_ready)
 		cart_do_r = 8'h00;
-	else if (cram_rd)
-		cart_do_r = cram_do;
+	else if (is_cram_addr)
+		cart_do_r = mbc_cram_do;
 	else
 		cart_do_r = rom_do;
 end
 
 assign cart_do = cart_do_r;
 
-reg read_low = 0;
-always @(posedge clk_sys) begin
-	read_low <= cram_addr[0];
-end
-
-assign Savestate_CRAMReadData = read_low ? cram_q_h : cram_q_l;
-
+wire [7:0] cram_q_h, cram_q_l;
 wire [7:0] cram_q = cram_addr[0] ? cram_q_h : cram_q_l;
-wire [7:0] cram_q_h;
-wire [7:0] cram_q_l;
 
-wire is_cram_addr = ~nCS & ~cart_addr[14];
-
+assign is_cram_addr = ~nCS & ~cart_addr[14];
 assign cram_rd = cart_rd & is_cram_addr;
-assign cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : mbc_cram_wr || (cart_wr & is_cram_addr & mbc_ram_enable);
+assign cram_wr = savestate_ovr ? Savestate_CRAMRWrEn : (cart_wr & is_cram_addr & mbc_ram_enable);
+assign cram_bram_wr = savestate_ovr ? (Savestate_CRAMRWrEn & ~|Savestate_CRAMAddr[16:8]) : mbc_cram_wr;
 
-wire [16:0] cram_addr = sleep_savestate ? Savestate_CRAMAddr[16:0] : mbc_cram_addr;
-wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : mbc_cram_wr ? mbc_cram_wr_do : cart_di;
+assign cram_addr = savestate_ovr ? Savestate_CRAMAddr[16:0] : mbc_cram_addr;
+
+wire [7:0] cram_di_l = savestate_ovr ? Savestate_CRAMWriteData[ 7:0] : mbc_cram_wr_do;
+wire [7:0] cram_di_h = savestate_ovr ? Savestate_CRAMWriteData[15:8] : mbc_cram_wr_do;
+
+assign Savestate_CRAM_Q = { cram_q_h, cram_q_l };
+
+assign bram_save = mbc7 | tama;
 
 // RAM size
 assign ram_mask_file =              // 0 - no ram
 		(mbc2 || mbc7 || tama)?8'h01:       // mbc2 512x4bits, mbc7 256 bytes EEPROM, TAMA 32 bytes
-	   (cart_ram_size == 1)?8'h03:  // 1 - 2k, 1 bank		 sd_lba[1:0]
-	   (cart_ram_size == 2)?8'h0F:  // 2 - 8k, 1 bank		 sd_lba[3:0]
-	   (cart_ram_size == 3)?8'h3F:  // 3 - 32k, 4 banks	 sd_lba[5:0]
-	   (cart_ram_size == 5)?8'h7F:  // 5 - 64k, 8 banks	 sd_lba[6:0]
+	   (ram_size == 1)?8'h03:  // 1 - 2k, 1 bank		 sd_lba[1:0]
+	   (ram_size == 2)?8'h0F:  // 2 - 8k, 1 bank		 sd_lba[3:0]
+	   (ram_size == 3)?8'h3F:  // 3 - 32k, 4 banks	 sd_lba[5:0]
+	   (ram_size == 5)?8'h7F:  // 5 - 64k, 8 banks	 sd_lba[6:0]
 		8'hFF;                      // 4 - 128k 16 banks  sd_lba[7:0] 1111
 
-assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2 || mbc7 || tama);
+assign has_save = mbc_battery && (|ram_size || mbc2 || mbc7 || tama);
 
-// Up to 8kb * 16banks of Cart Ram (128kb)
-dpram #(16) cram_l (
+dpram #(7) cram_bram_l (
 	.clock_a (clk_sys),
-	.address_a (cram_addr[16:1]),
-	.wren_a (cram_wr & ~cram_addr[0]),
-	.data_a (cram_di),
+	.address_a (cram_addr[7:1]),
+	.wren_a (cram_bram_wr & (~cram_addr[0] | savestate_ovr)),
+	.data_a (cram_di_l),
 	.q_a (cram_q_l),
 
 	.clock_b (clk_sys),
-	.address_b (bk_addr[15:0]),
-	.wren_b (bk_wr),
+	.address_b (bk_addr[6:0]),
+	.wren_b (bk_wr & ~|bk_addr[16:7]),
 	.data_b (bk_data[7:0]),
 	.q_b (bk_q[7:0])
 );
 
-dpram #(16) cram_h (
+dpram #(7) cram_bram_h (
 	.clock_a (clk_sys),
-	.address_a (cram_addr[16:1]),
-	.wren_a (cram_wr & cram_addr[0]),
-	.data_a (cram_di),
+	.address_a (cram_addr[7:1]),
+	.wren_a (cram_bram_wr & (cram_addr[0] | savestate_ovr)),
+	.data_a (cram_di_h),
 	.q_a (cram_q_h),
 
 	.clock_b (clk_sys),
-	.address_b (bk_addr[15:0]),
-	.wren_b (bk_wr),
+	.address_b (bk_addr[6:0]),
+	.wren_b (bk_wr & ~|bk_addr[16:7]),
 	.data_b (bk_data[15:8]),
 	.q_b (bk_q[15:8])
 );
