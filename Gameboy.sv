@@ -436,22 +436,22 @@ wire        sys_megaduck = (status[15:14] == 3);
 wire [31:0] joy0_unmod = joydb_1ena ?
 	!status[60] ? {
 		//SM BAUDLR
-		OSD_STATUS? 32'b000000 : {joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[5:0]}
+		OSD_STATUS? 32'b000000 : joydb_1_mapped[7:0]
 	} :
 	{
 		//SM ABUDLR
-		OSD_STATUS? 32'b000000 : {joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[4], joydb_1[5], joydb_1[3:0]}
+		OSD_STATUS? 32'b000000 : joydb_1_mapped[7:0]
 	}
 : joy0_unmod_USB;
 
 wire [31:0] joystick_1 = joydb_2ena ?
 	!status[60] ? {
 		//SM BAUDLR
-		OSD_STATUS? 32'b000000 : {joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[5:0]}
+		OSD_STATUS? 32'b000000 : joydb_2_mapped[7:0]
 	} :
 	{
 		//SM ABUDLR
-		OSD_STATUS? 32'b000000 : {joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[4], joydb_2[5], joydb_2[3:0]}
+		OSD_STATUS? 32'b000000 : joydb_2_mapped[7:0]
 	}
 : joydb_1ena ? joy0_unmod_USB : joystick_1_USB;
 
