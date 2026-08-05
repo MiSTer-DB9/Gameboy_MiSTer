@@ -103,6 +103,7 @@ jobs:
         MAIN_BRANCH: Gameboy2P
         UPSTREAM_REPO: https://github.com/MiSTer-devel/Gameboy_MiSTer.git
         UPSTREAM_BRANCH: Gameboy2P
+        UPSTREAM_RELEASES_DIR: releases
         BUILD_SHA: ${{ steps.meta.outputs.build_sha }}
 
   build:
